@@ -85,7 +85,7 @@ def train_model(df, features):
     PrecisionRecallDisplay.from_estimator(model, X_test, y_test)
     plt.title("Precision-Recall Curve")
     plt.tight_layout()
-    plt.savefig("precision_recall_curve.png", dpi=300)
+    plt.savefig("images/precision_recall_curve.png", dpi=300)
     plt.show()
     
     return model
@@ -106,7 +106,7 @@ def plot_results(df, model, features):
     plt.ylabel("CPU Usage (%)")
     plt.legend()
     plt.tight_layout()
-    plt.savefig("cpu_usage_incidents.png", dpi=300)
+    plt.savefig("images/cpu_usage_incidents.png", dpi=300)
     plt.show()
     
     # Feature Importance
@@ -117,7 +117,7 @@ def plot_results(df, model, features):
     plt.xlabel("Importance")
     plt.ylabel("Feature")
     plt.tight_layout()
-    plt.savefig("feature_importance.png", dpi=300)
+    plt.savefig("images/feature_importance.png", dpi=300)
     plt.show()
     
     # Trend vs Volatility
@@ -129,7 +129,7 @@ def plot_results(df, model, features):
     plt.ylabel("Value")
     plt.legend()
     plt.tight_layout()
-    plt.savefig("trend_volatility.png", dpi=300)
+    plt.savefig("images/trend_volatility.png", dpi=300)
     plt.show()
 
 # -----------------------------
