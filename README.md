@@ -1,44 +1,61 @@
 # Predictive Alerting for Cloud Telemetry
 
 ## 🚀 Introduction
-This project implements a predictive alerting system that identifies server failure signatures before they occur. By analyzing CPU telemetry for shifts into "turbulent regimes," the model provides a 15-minute lead time ($H=15$) to prevent outages, moving beyond the limitations of reactive, static thresholds.
+In high-availability cloud environments, traditional monitoring relies on static thresholds (e.g., "Alert if CPU > 90%"), which are inherently reactive. By the time a threshold is breached, the service has likely already degraded. This project implements a **Predictive Alerting** prototype that identifies behavioral "signatures" of failure before they occur, providing the lead time necessary for proactive mitigation.
 
----
+## 📝 Problem Formulation
+We convert a raw time-series telemetry stream into a **Supervised Binary Classification** problem using a sliding-window approach.
 
-## 🛠️ Modeling Choices
-* **Algorithm:** **Random Forest Classifier** was selected for its ability to capture non-linear relationships and its native resistance to the "heavy-tailed" noise common in cloud metrics.
-* **Feature Engineering:** Instead of raw values, the model relies on **Statistical Signatures**:
-    * `cpu_rolling_std`: Detects "jitter" or instability (Stuck Threads).
-    * `cpu_trend`: Captures directional momentum (Memory Leaks).
-    * `cpu_rolling_max`: Identifies aggressive resource saturation (Traffic Surges).
-* **Logic:** The model is trained to recognize the *behavioral transition* from a stable seasonal baseline to an anomalous state.
+* **Window ($W=30$):** We utilize 30 minutes of historical data to provide the model with enough context to calculate momentum and stability.
+* **Horizon ($H=15$):** We predict the probability of an incident occurring within the next 15 minutes.
+    * *Justification:* $H < 15$ provides insufficient lead time for intervention; $H > 30$ becomes too vague for operational clarity.
+* **Labels:**
+    * **1 (Positive):** An incident is imminent within the $H$ horizon.
+    * **0 (Negative):** The system is operating within normal seasonal parameters.
 
----
+The core philosophy is to keep the system simple, justifiable, and iterative: **Target → Data → Features.**
 
-## 🧪 Evaluation Setup
-To ensure the system is production-ready, the following validation framework was used:
-* **Chronological Split:** The dataset (2 days of telemetry) was split 75/25 without shuffling. This prevents "data leakage" and ensures the model is tested on its ability to predict a future it has never seen.
-* **The Target:** An "Incident" is defined as a failure window occurring within the next 15 minutes ($H=15$).
-* **Metric Selection:** We prioritize **Recall** and **Average Precision (AP)** over Accuracy, as the dataset is highly imbalanced (incidents represent <10% of total uptime).
+## 🤖 Model Selection: Random Forest
+The **Random Forest Classifier** was selected for its balance of performance and explainability:
+* **Non-Linearity:** It captures complex patterns (e.g., different "normal" CPU levels at different times of the day) that linear models miss.
+* **Explainability:** Through **Feature Importance**, it moves beyond "black box" logic, allowing engineers to see if an alert was triggered by a trend, a spike, or jitter.
+* **Robustness:** It is naturally resistant to the heavy-tailed noise common in cloud telemetry.
 
----
+## 🧬 Synthetic Data Generation
+The model is validated against synthetic telemetry mimicking a 2-day production cycle. This allows us to test against known "Ground Truth" failure modes.
 
-## 📈 Results & Threshold Optimization
-The model achieved the **80% Recall target** by optimizing the decision threshold using the Precision-Recall curve.
+![CPU Usage and Incident Windows](https://raw.githubusercontent.com/pedaced/predictive_alerting/main/cpu_usage_incidents.png)
 
-| Metric | Result | Interpretation |
+### Incident Modeling: "Dying Server" Signatures
+We model three specific failure modes to ensure the system recognizes different "physics" of degradation:
+1.  **Memory Leak (Trend):** Slow, linear increase in usage.
+2.  **Traffic Surge (Spike):** Exponential growth in demand.
+3.  **Stuck Thread (Jitter):** High-variance, erratic fluctuations (turbulent regime).
+
+## 🛠️ Feature Engineering: First Principles
+Features were designed based on the question: *"What does a server look like when it's dying?"*
+
+| Feature | Logic | Detects |
 | :--- | :--- | :--- |
-| **Recall (Class 1)** | **0.80** | Successfully caught 80% of all injected failure windows. |
-| **Precision (Class 1)** | **~0.60** | For every 10 alerts, 6 are true positives. |
-| **Optimal Threshold** | **~0.18** | The system alerts when the incident probability exceeds 18%. |
+| **`cpu_rolling_mean`** | "It's working harder than usual" | Sustained high load |
+| **`cpu_rolling_std`** | "It's struggling and becoming erratic" | Jitter/Stuck threads |
+| **`cpu_trend`** | "It's gradually losing resources" | Memory leaks |
+| **`cpu_rolling_max`** | "It's hitting its ceiling" | Traffic surges |
 
-### Analysis of the Precision-Recall Trade-off
+## 📈 Results and Analysis
+The system was evaluated on a **chronological held-out period** (the final 25% of the data) to simulate real-world inference.
 
-While the default model threshold (0.5) yielded high precision but low recall (~0.40), we intentionally shifted the threshold to **0.18**. In a mission-critical alerting system, a **60% Precision / 80% Recall** balance is optimal: it provides high coverage for outages while maintaining a manageable signal-to-noise ratio for SRE teams.
+![Precision-Recall Curve](https://raw.githubusercontent.com/pedaced/predictive_alerting/main/precision_recall_curve.png)
 
----
+### Interpretation and Insights
+* **Threshold Optimization:** By default, models use a 0.5 probability threshold. However, for mission-critical alerting, we prioritize **Recall** (coverage) over **Precision** (avoiding false alarms).
+* **The 80/60 Balance:** We intentionally lowered the "bar of evidence" (decision threshold) to approximately **0.18**.
+* **Outcome:** The model raises at least one alert before the start of an incident for **80% of incident intervals**, while keeping the precision at a reasonable level (~60%). This ensures that even subtle early-warning signs trigger an alert, prioritizing system reliability.
 
-## ⚠️ Limitations & Real-World Adaptation
-* **Seasonality Shifts:** The current model assumes a consistent daily cycle. A production version would require a "Seasonality Decomposition" layer (e.g., Fourier Transforms) to handle holidays or daylight savings.
-* **Cold Start:** As a supervised model, it requires labeled historical failures. In a new environment, an unsupervised "Anomaly Detection" layer would be needed initially to gather training labels.
-* **Adaptation:** To deploy this in a real system, the model would be served via a microservice consuming a live Kafka/Prometheus stream, triggering PagerDuty alerts when the probability threshold is breached.
+
+
+## ⚠️ Limitations and Future Direction
+To transition this prototype into a production-ready system:
+* **Multivariate Input:** Incorporating Memory, Disk I/O, and Network latency to catch failures that do not manifest in CPU usage.
+* **Online Learning:** Implementing a feedback loop to retrain the model as the "normal" baseline evolves, preventing model drift.
+* **Deployment:** The system should be served via a microservice consuming a live stream (e.g., Kafka/Prometheus), triggering PagerDuty notifications when the 0.18 probability threshold is breached.
