@@ -1,86 +1,77 @@
-# Cloud Predictive Alerting System
+# Predictive Alerting System for Cloud Metrics
 
-This repository contains a prototype for a **Predictive Alerting System** designed to anticipate cloud service incidents. Using a **Sliding-Window Supervised Learning** approach, the system transforms raw CPU telemetry into actionable early-warning signals.
+## 🌟 Introduction
+Traditional monitoring relies on **static thresholds** (e.g., "Alert if CPU > 90%"), which suffer from **reactive latency**—triggering only after a service has already degraded. 
 
----
-
-## 🚀 Core Philosophy
-> **"Keep it simple and justifiable."**
-> 
-> We prioritize features that an engineer can understand and a model can explain. Our design follows a first-principles approach: **Target → Data → Features.**
+This project implements a **Predictive Alerting System** designed to address the inherent complexity of cloud telemetry:
+* **Turbulent Regimes:** Systems often shift abruptly from stable operation to chaotic, high-variance "turbulent" states.
+* **Heavy-Tailed Distributions:** Cloud metrics frequently exhibit extreme outliers rather than normal distributions.
+* **Actionable Lead Time:** By predicting the probability of an incident $H$ minutes into the future, we provide SREs with a critical window to intervene proactively.
 
 ---
 
 ## 🛠️ Problem Formulation
-We treat incident detection as a **Supervised Binary Classification** problem.
+We transform incident detection into a **Supervised Binary Classification** task using a sliding-window approach.
 
-* **Window ($W=30$):** We look at the past 30 minutes of data to capture patterns.
-* **Horizon ($H=15$):** We predict if an incident will occur in the *next* 15 minutes. This provides sufficient lead time for an engineer to intervene.
-* **Labels:** * `1`: An incident is imminent (within 15 mins).
-    * `0`: Normal operation.
-
-
+* **Window ($W=30$):** We analyze the past 30 minutes of telemetry to capture behavioral patterns.
+* **Horizon ($H=15$):** We predict the probability of an incident occurring in the *next* 15 minutes.
+* **Philosophy:** "Keep it simple and justifiable". We focus on features that represent a "dying server" signature.
 
 ---
 
 ## 📊 Synthetic Data Generation
-Real-world incidents are sparse. To train the model, we simulate three classic "Dying Server" signatures:
+To validate the model, we simulate telemetry representing three classic failure modes.
 
-1.  **Memory Leak:** A gradual, consistent upward trend in CPU.
-2.  **Traffic Surge:** An exponential acceleration in load (spikes).
-3.  **Stuck Thread:** High jitter and erratic fluctuations (instability).
+![CPU Usage and Incident Windows](cpu_usage_incidents.jpg)
 
----
-
-## 🧠 Feature Engineering
-Instead of complex "black-box" math, we use **Behavioral Signatures**:
-
-| Feature | SRE Justification | Logic |
-| :--- | :--- | :--- |
-| **`cpu_rolling_mean`** | "Is it working harder than usual?" | Captures baseline shifts. |
-| **`cpu_rolling_std`** | "Is it becoming erratic?" | Captures **Jitter** (Stuck threads). |
-| **`cpu_trend`** | "Is it gradually losing resources?" | Captures **Leaks** (Gradual growth). |
-| **`cpu_rolling_max`** | "Is it hitting its ceiling?" | Captures **Spikes** (Traffic surges). |
-
-
-
----
-
-## 🤖 Model Selection
-We selected a **Random Forest Classifier** for this task.
-* **Explainability:** Unlike Deep Learning, Random Forest tells us *why* an alert was triggered (e.g., "The Trend was the deciding factor").
-* **Non-Linearity:** It effectively handles specific thresholds and seasonal peaks.
-* **Class Imbalance:** By using `class_weight='balanced'`, we ensure the model learns from rare incident events.
+* **Memory Leak:** A gradual upward slope over 60 minutes.
+* **Traffic Surge:** An exponential acceleration in load.
+* **Stuck Thread:** High-variance fluctuations, or a **turbulent regime**.
+* **Target:** The red zones indicate the $H=15$ prediction window before an actual failure.
 
 ---
 
 ## 📈 Results & Analysis
-The model is evaluated using a **chronological split** to prevent data leakage.
 
-* **Recall:** Targeted at **~80%**. In mission-critical systems, missing an incident is more expensive than a false alarm.
-* **Precision-Recall Curve:** Used instead of Accuracy because incidents are rare (class imbalance).
-* **Insight:** When `cpu_trend` is the top feature, the model is successfully catching Leaks. When `cpu_rolling_std` spikes, it is detecting Jitter.
+### 1. Classification Performance
+The model was evaluated using a chronological split to prevent data leakage.
 
+| Metric | Class 0 (Normal) | Class 1 (Incident) |
+| :--- | :--- | :--- |
+| **Precision** | 0.97 | 1.00 |
+| **Recall** | 1.00 | 0.44 |
+| **F1-Score** | 0.98 | 0.61 |
 
+**Analysis of Recall (0.44):** The model currently prioritizes **Precision** (1.00), meaning it has zero false alarms but misses more subtle early-stage anomalies. In a mission-critical environment, we would tune the threshold to increase Recall toward the **80% target**.
+
+### 2. Precision-Recall Curve
+![Precision-Recall Curve](precision_recall_curve.png)
+
+With an **Average Precision (AP) of 0.86**, the model shows strong predictive power. The curve demonstrates that we can significantly increase Recall by accepting a reasonable number of false positives—a necessary trade-off for mission-critical alerting.
+
+### 3. Feature Importance: The "Why"
+![Random Forest Feature Importance](feature_importance.png)
+
+* **`cpu_rolling_std` (Volatility):** The top predictor. This proves that **instability** is a more reliable leading indicator than the raw average.
+* **`cpu_trend` & `cpu_rolling_max`:** These capture the "Leaks" and "Surges" respectively.
+
+### 4. Behavioral Signatures
+![Trend vs Volatility](trend_volatility.jpg)
+
+This visualization confirms that **Volatility** (orange) stays flat during normal seasonality but spikes only when the system enters a turbulent state, providing a clear signature for the Random Forest to learn.
 
 ---
 
-## ⚠️ Limitations
-* **Overfitting:** With limited historical incidents, the model may memorize specific timestamps.
-* **Lead Time Variance:** While $H=15$ is the goal, some rapid spikes may only be detectable 5 minutes in advance.
-* **Seasonality:** High natural traffic (e.g., mid-day peaks) can occasionally be mistaken for surges.
+## 🤖 Model Selection
+We chose **Random Forest** for several operational reasons:
+* **Explainability:** We can justify *why* an alert was raised (e.g., "High Volatility").
+* **Non-Linearity:** It handles specific thresholds and seasonal peaks better than linear models.
+* **Robustness:** It is natively resistant to the noise found in heavy-tailed cloud metrics.
 
 ---
 
-## 💻 Implementation
-To run the end-to-end pipeline:
-
-```python
-import pandas as pd
-import numpy as np
-from sklearn.ensemble import RandomForestClassifier
-
-# Run the full pipeline including data generation, 
-# feature engineering, and model training.
-if __name__ == "__main__":
-    run_full_pipeline(days=2, W=30, H=15)
+## 💻 How to Run
+1. Ensure you have `pandas`, `numpy`, `scikit-learn`, `seaborn`, and `matplotlib` installed.
+2. Run the main script:
+   ```bash
+   python script_name.py
