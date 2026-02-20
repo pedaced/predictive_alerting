@@ -24,7 +24,7 @@ The **Random Forest Classifier** was selected for its balance of performance and
 ## 🧬 Synthetic Data Generation
 The model is validated against synthetic telemetry mimicking a 2-day production cycle. This allows us to test against known "Ground Truth" failure modes.
 
-![CPU Usage and Incident Windows](https://raw.githubusercontent.com/pedaced/predictive_alerting/main/cpu_usage_incidents.png)
+![CPU Usage and Incident Windows](https://raw.githubusercontent.com/pedaced/predictive_alerting/main/images/cpu_usage_incidents.png)
 
 ### Incident Modeling: "Dying Server" Signatures
 We model three specific failure modes to ensure the system recognizes different "physics" of degradation:
@@ -45,7 +45,7 @@ Features were designed based on the question: *"What does a server look like whe
 ## 📈 Results and Analysis
 The system was evaluated on a **chronological held-out period** (the final 25% of the data) to simulate real-world inference.
 
-![Precision-Recall Curve](https://raw.githubusercontent.com/pedaced/predictive_alerting/main/precision_recall_curve.png)
+![Precision-Recall Curve](https://raw.githubusercontent.com/pedaced/predictive_alerting/main/images/precision_recall_curve.png)
 
 ### Interpretation and Insights
 * **Threshold Optimization:** By default, models use a 0.5 probability threshold. However, for mission-critical alerting, we prioritize **Recall** (coverage) over **Precision** (avoiding false alarms).
